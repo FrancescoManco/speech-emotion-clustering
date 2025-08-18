@@ -26,7 +26,10 @@ dependencies = [
     "whisperx>=3.4.2",
     "pyyaml>=6.0.0",
     "audiomentations>=0.30.0", 
-    "librosa>=0.10.0", 
+    "librosa>=0.10.0",
+    "umap-learn>=0.5.0",
+    "seaborn>=0.11.0",
+    "yellowbrick>=1.5.0",
 ]
 [dependency-groups]
 dev = [

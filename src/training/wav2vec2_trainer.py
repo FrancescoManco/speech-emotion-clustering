@@ -37,6 +37,9 @@ from sklearn.metrics import (
 # Audio augmentation
 from audiomentations import Compose, AddGaussianNoise, TimeStretch, PitchShift, Shift, Gain, PolarityInversion
 
+# Dataset loading module
+from src.dataset.loader import DatasetLoader, DatasetConfig
+
 warnings.filterwarnings("ignore")
 os.environ["WANDB_MODE"] = "disabled"
 
@@ -162,109 +165,6 @@ def set_seed(seed: int = 42):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
-
-
-class DatasetManager:
-    """Manages loading and preprocessing of datasets."""
-    
-    def __init__(self, config: TrainingConfig, data_dir: str):
-        self.config = config
-        self.data_dir = Path(data_dir)
-        
-        # EMOVO emotion identifiers
-        self.emovo_emotions = {
-            'neu': 'neutral', 'gio': 'happy', 'tri': 'sad', 'rab': 'angry',
-            'pau': 'fearful', 'dis': 'disgust', 'sor': 'surprised'
-        }
-        
-    def load_emovo_dataset(self) -> pd.DataFrame:
-        """Load and process EMOVO dataset."""
-        emovo_path = self.data_dir / "EMOVO"
-        
-        if not emovo_path.exists():
-            print(f"EMOVO directory not found: {emovo_path}")
-            return pd.DataFrame()
-            
-        print("Loading EMOVO dataset...")
-        
-        data = []
-        samples_counter = {emotion: 0 for emotion in self.emovo_emotions.values()}
-        
-        for root, dirs, files in os.walk(emovo_path):
-            for file in files:
-                if file.endswith(".wav"):
-                    f = file.split('.')[0].split('-')
-                    if len(f) >= 3 and f[0] in self.emovo_emotions:
-                        emotion = self.emovo_emotions[f[0]]
-                        samples_counter[emotion] += 1
-                        
-                        data.append({
-                            "path": os.path.join(root, file),
-                            "emotion": emotion,
-                            "source": "emovo"
-                        })
-        
-        df = pd.DataFrame(data)
-        print(f"EMOVO loaded: {len(df)} samples")
-        print(f"Distribution: {samples_counter}")
-        return df
-    
-    def load_emozionalmente_dataset(self) -> pd.DataFrame:
-        """Load and process emozionalmente dataset."""
-        emozionalmente_path = self.data_dir / "emozionalmente_dataset"
-        metadata_path = emozionalmente_path / "metadata" / "samples.csv"
-        audio_path = emozionalmente_path / "audio"
-        
-        if not metadata_path.exists():
-            print(f"Emozionalmente metadata not found: {metadata_path}")
-            return pd.DataFrame()
-            
-        print("Loading emozionalmente dataset...")
-        
-        df = pd.read_csv(metadata_path)
-        df = df[["file_name", "emotion_expressed"]].copy()
-        df.columns = ["file_name", "emotion"]
-        df["path"] = df["file_name"].apply(lambda x: str(audio_path / x))
-        df["source"] = "emozionalmente"
-        
-        # Verify file existence
-        df = df[df["path"].apply(os.path.exists)].copy()
-        
-        print(f"Emozionalmente loaded: {len(df)} samples")
-        print(f"Distribution: {df['emotion'].value_counts().to_dict()}")
-        return df
-    
-    def create_unified_dataset(self) -> pd.DataFrame:
-        """Create unified dataset based on configuration."""
-        datasets = []
-        
-        if self.config.dataset_choice in ['emovo', 'both']:
-            emovo_df = self.load_emovo_dataset()
-            if not emovo_df.empty:
-                datasets.append(emovo_df)
-        
-        if self.config.dataset_choice in ['emozionalmente', 'both']:
-            emo_df = self.load_emozionalmente_dataset()
-            if not emo_df.empty:
-                datasets.append(emo_df)
-        
-        if not datasets:
-            raise ValueError(f"No valid dataset found for choice: {self.config.dataset_choice}")
-        
-        # Combine datasets
-        final_df = pd.concat(datasets, ignore_index=True)
-        
-        # Apply emotion mapping
-        final_df["emotion"] = final_df["emotion"].replace(self.config.emotion_mapping)
-        
-        print(f"\nFINAL DATASET:")
-        print(f"Total samples: {len(final_df)}")
-        print(f"Classes: {sorted(final_df['emotion'].unique())}")
-        print(f"Distribution:")
-        for emotion, count in final_df['emotion'].value_counts().items():
-            print(f"   {emotion}: {count}")
-        
-        return final_df
 
 
 class AugmentationManager:
@@ -530,9 +430,16 @@ def train_wav2vec2_model(
     set_seed(config.seed)
     print(f"Seed set to: {config.seed}")
     
-    # Load dataset
-    dataset_manager = DatasetManager(config, data_dir)
-    df = dataset_manager.create_unified_dataset()
+    # Load dataset using the new DatasetLoader
+    # Create dataset configuration from training configuration
+    dataset_config = DatasetConfig(
+        dataset_choice=config.dataset_choice,
+        emotion_mapping=config.emotion_mapping,
+        output_file=None  # We don't save from training, just use in memory
+    )
+    
+    dataset_loader = DatasetLoader(dataset_config, data_dir)
+    df = dataset_loader.create_unified_dataset()
     
     # Save final dataset
     output_path = Path(output_dir)

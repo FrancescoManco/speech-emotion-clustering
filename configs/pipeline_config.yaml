@@ -1,0 +1,99 @@
+# Complete Speech Emotion Analysis Pipeline Configuration
+# This configuration orchestrates the entire workflow from audio segmentation to LLM analysis
+
+pipeline:
+  # Input configuration
+  input_files:
+    - "data/audio1.wav"
+    - "data/video1.mp4"
+    # Add more audio/video files as needed
+  
+  output_dir: "results/complete_pipeline"  # Main output directory for all results
+  
+  # Pipeline steps to execute (set to false to skip steps)
+  run_segmentation: true      # Audio segmentation with WhisperX
+  run_dataset_creation: true  # Unified dataset creation
+  run_training: false         # Model training (only if model doesn't exist)
+  run_clustering: true        # Clustering analysis with hyperparameter optimization
+  run_llm_analysis: true      # LLM-based emotion analysis and evaluation
+  
+  # Model configuration
+  model_path: "models/final_model_freeze_good"  # Path to existing model (if available)
+  
+  # Step-specific configuration files
+  segmentation_config: null        # Optional: WhisperX specific config
+  dataset_config: null             # Optional: Dataset creation config
+  training_config: "train_config.yaml"           # Required if run_training: true
+  clustering_config: "clustering_config.yaml"    # Required if run_clustering: true
+  llm_analysis_config: "llm_analysis_config.yaml" # Required if run_llm_analysis: true
+  
+  # Advanced options
+  force_recreate: false       # Force recreation of existing outputs
+  cleanup_intermediate: false # Remove intermediate files after completion
+  parallel_processing: true   # Use parallel processing where possible
+
+# Notes on usage:
+# 
+# 1. BASIC USAGE:
+#    python -m src.core.pipeline --config pipeline_config.yaml
+# 
+# 2. OVERRIDE SETTINGS:
+#    python -m src.core.pipeline --config pipeline_config.yaml \
+#      --output-dir my_results/ --force-recreate
+# 
+# 3. SKIP SPECIFIC STEPS:
+#    python -m src.core.pipeline --config pipeline_config.yaml \
+#      --skip-training --skip-llm-analysis
+# 
+# 4. USE EXISTING MODEL:
+#    python -m src.core.pipeline --config pipeline_config.yaml \
+#      --model-path models/my_trained_model/
+# 
+# 5. CUSTOM INPUT FILES:
+#    python -m src.core.pipeline --config pipeline_config.yaml \
+#      --input-files audio1.wav audio2.mp4 video1.mov
+
+# PIPELINE FLOW:
+# 
+# 1. SEGMENTATION (WhisperX)
+#    Input: Audio/video files
+#    Output: CSV files with transcribed segments
+#    
+# 2. DATASET CREATION
+#    Input: Segmented CSV files
+#    Output: Unified dataset CSV
+#    
+# 3. TRAINING (Optional)
+#    Input: Unified dataset
+#    Output: Trained Wav2Vec2 model
+#    
+# 4. CLUSTERING
+#    Input: Unified dataset + trained model
+#    Output: Clustered dataset with emotion groupings
+#    
+# 5. LLM ANALYSIS
+#    Input: Clustered dataset
+#    Output: Emotion analyses, NLP evaluation, audio exports
+
+# CONFIGURATION FILES NEEDED:
+# 
+# - train_config.yaml: Training parameters (if run_training: true)
+# - clustering_config.yaml: Clustering algorithm parameters  
+# - llm_analysis_config.yaml: LLM model and analysis settings
+#
+# Example minimal setup:
+# 1. Set input_files to your audio/video files
+# 2. Set model_path to existing model (or enable training)
+# 3. Run: python -m src.core.pipeline --config pipeline_config.yaml
+
+# OUTPUTS STRUCTURE:
+# results/complete_pipeline/
+# ├── segmentation/           # WhisperX outputs (CSV files)
+# ├── dataset_creation/       # Unified dataset
+# ├── training/              # Trained models (if run_training: true)
+# ├── clustering/            # Clustering results and best config
+# ├── llm_analysis/          # LLM analyses and evaluations
+# │   ├── cluster_analyses.csv
+# │   ├── nlp_evaluation_*.csv
+# │   └── exported_audio/    # Audio files and ZIP archive
+# └── pipeline_summary.json  # Complete execution summary

@@ -1,0 +1,1 @@
+ollama>=0.3.0\nevaluate>=0.4.5\nsentence-transformers>=5.0.0
