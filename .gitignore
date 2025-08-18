@@ -8,3 +8,15 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment variables
+.env
+.env.local
+.env.production
+.env.staging
+
+# Logs and temp files
+*.log
+.DS_Store
+.ipynb_checkpoints/
+configs/secrets.yaml

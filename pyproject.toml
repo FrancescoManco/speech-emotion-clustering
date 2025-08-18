@@ -12,6 +12,7 @@ dependencies = [
     "numpy>=2.3.2",
     "pandas>=2.3.1",
     "plotly>=6.2.0",
+    "pydub>=0.25.1",
     "python-dotenv>=1.1.1",
     "scikit-learn>=1.7.1",
     "seaborn>=0.13.2",
@@ -21,6 +22,7 @@ dependencies = [
     "torchaudio>=2.7.1",
     "tqdm>=4.67.1",
     "transformers>=4.55.0",
+    "whisperx>=3.4.2",
 ]
 
 [dependency-groups]
