@@ -9,7 +9,8 @@ dependencies = [
     "jiwer>=4.0.0",
     "matplotlib>=3.10.5",
     "nltk>=3.9.1",
-    "numpy>=2.3.2",
+    "numba>=0.57.0", 
+    "numpy>=1.22,<2.1",
     "pandas>=2.3.1",
     "plotly>=6.2.0",
     "pydub>=0.25.1",
@@ -23,8 +24,10 @@ dependencies = [
     "tqdm>=4.67.1",
     "transformers>=4.55.0",
     "whisperx>=3.4.2",
+    "pyyaml>=6.0.0",
+    "audiomentations>=0.30.0", 
+    "librosa>=0.10.0", 
 ]
-
 [dependency-groups]
 dev = [
     "black>=25.1.0",

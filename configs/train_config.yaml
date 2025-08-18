@@ -1,0 +1,54 @@
+# Wav2Vec2 Training Configuration
+# Default configuration based on both_full_aug experiment (experiment 5)
+
+# Data configuration
+data:
+  dataset_choice: "both"  # Options: "emovo", "emozionalmente", "both"
+  use_augmentation: true
+  augmentation_type: "All"  # Options: "All", "Gaussian", "Pitch", "Gain", "TimeStretch", "Shift", "PolarityInversion"
+  augmentation_mode: "pre_generated"  # Options: "pre_generated", "on_the_fly"
+  force_recreate_augmented: false
+
+# Model configuration
+model:
+  model_name: "jonatasgrosman/wav2vec2-large-xlsr-53-italian"
+  
+# Audio processing
+audio:
+  sampling_rate: 16000
+  max_length: 64000
+
+# Training parameters (from both_full_aug experiment)
+training:
+  batch_size: 8
+  learning_rate: 2.0e-5
+  num_epochs: 10
+  warmup_ratio: 0.1
+  weight_decay: 0.001
+  gradient_accumulation_steps: 2
+  lr_scheduler_type: "cosine"
+
+# Early stopping
+early_stopping:
+  use_early_stopping: false
+  early_stopping_patience: 3
+  metric_for_best_model: "f1_macro"
+
+# Data splitting
+data_split:
+  test_size: 0.2
+  val_size: 0.1
+
+# Reproducibility
+reproducibility:
+  seed: 42
+
+# Emotion mapping
+emotion_mapping:
+  angry: "anger"
+  fearful: "fear"
+  surprised: "surprise"
+  sad: "sadness"
+  neutral: "neutrality"
+  happy: "happiness"
+  disgusted: "disgust"
