@@ -38,7 +38,7 @@ class WhisperXConfig:
 
 
 class WhisperXProcessor:
-    """Segmentation processing pipeline."""
+    """Segmentation pipeline."""
     
     def __init__(self, config: WhisperXConfig, hf_token: str):
         self.config = config
@@ -394,6 +394,75 @@ class AudioSegmenter:
                 })
         
         return pd.DataFrame(processed_segments)
+
+
+def process_audio_file(audio_file, output_dir, num_speakers=None, model_name="large-v3-turbo", language="it", hf_token=None):
+    """ Process a single audio file for segmentation, transcription, alignment, and diarization.
+    Args:
+        audio_file (str): Audio file path
+        output_dir (str): Audio file directory
+        num_speakers (int, optional): Number of speakers (if known)
+        model_name (str): WhisperX model name
+        language (str): language code (default: "it")
+        hf_token (str): HuggingFace token for diarization (if not in .env file)
+    Returns:
+        pd.DataFrame: DataFrame with segmented audio information
+    """
+    # Get HuggingFace token from env if not provided
+    if not hf_token:
+        hf_token = os.getenv('HF_TOKEN')
+    if not hf_token:
+        raise ValueError("HuggingFace token required. Set HF_TOKEN in .env file or provide via hf_token parameter")
+    
+    # Verify audio file exists
+    if not Path(audio_file).exists():
+        raise FileNotFoundError(f"Audio file not found: {audio_file}")
+    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # Create configuration
+    config = WhisperXConfig(
+        model_name=model_name,
+        language=language,
+        device=device,
+        compute_type="float16" if device == "cuda" else "int8",
+    )
+    
+    # Create output directory
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    # Initialize processor
+    processor = WhisperXProcessor(config, hf_token)
+    processor.load_model()
+    segmenter = AudioSegmenter(config)
+    
+    print(f"Processing: {Path(audio_file).name}")
+    
+    try:
+        # Step 1: Process transcription (includes transcribe, align, diarize, segment processing)
+        print("Transcribing & processing segments...")
+        transcript_df = processor.process_file(str(audio_file), num_speakers)
+        audio_name = Path(audio_file).stem
+        
+        # Step 2: Create audio segments  
+        print("Creating audio clips...")
+        segments_dir = output_path / f"segmented_{audio_name}"
+        segments_report_df = segmenter.segment_audio(str(audio_file), transcript_df, str(segments_dir))
+        
+        # Step 3: Save results
+        print("Saving results...")
+        segments_report_path = output_path / f"segmented_{audio_name}.csv"
+        segments_report_df.to_csv(segments_report_path, index=False)
+        
+        successful_segments = segments_report_df['success'].sum()
+        print(f"Audio segments created: {successful_segments}/{len(segments_report_df)}")
+        print(f"Results saved: {segments_report_path}")
+        
+        return segments_report_df
+        
+    except Exception as e:
+        print(f"Error processing {audio_file}: {str(e)}")
+        raise
 
 
 def main():
