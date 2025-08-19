@@ -1,13 +1,3 @@
-#!/usr/bin/env python3
-"""
-WhisperX CLI - Audio transcription, alignment, and diarization tool.
-
-Usage:
-    python src/segmentation/whisperx.py --audio path/to/audio.wav --output output/
-
-Author: Francesco Manco
-"""
-
 import argparse
 import gc
 import math
@@ -39,7 +29,7 @@ class WhisperXConfig:
     
     # Segmentation parameters
     merge_duration_threshold: float = 1.5  # seconds
-    split_duration_threshold: float = 20.0  # seconds
+    split_duration_threshold: float = 10.0  # seconds
     min_words_per_segment: int = 2
     
     # Audio segmentation
@@ -48,7 +38,7 @@ class WhisperXConfig:
 
 
 class WhisperXProcessor:
-    """Main WhisperX processing pipeline."""
+    """Segmentation processing pipeline."""
     
     def __init__(self, config: WhisperXConfig, hf_token: str):
         self.config = config
@@ -407,25 +397,33 @@ class AudioSegmenter:
 
 
 def main():
-    """Main CLI function."""
+    """
+    Audio Segmentation - Transcription, alignment, diarization and segmentation.
+
+    Usage:
+        # Single file segmentation:
+        python segmentation.py --audio audio_file.wav --output results/
+
+        # Multiple files segmentation:
+        python segmentation.py --input-dir audio_files/ --output results/
+
+        # Example with specific parameters:
+        python segmentation.py --audio audio_file.mp3 --output results/ --speakers 3 --language it
+    """
     parser = argparse.ArgumentParser(
-        description="WhisperX CLI - Audio transcription, alignment, and diarization",
+        description="Segmentation Process - Audio transcription, alignment, diarization and segmentation",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     
     # Input options
     input_group = parser.add_mutually_exclusive_group(required=True)
     input_group.add_argument("--audio", "-a", 
-                            help="Path to single audio file")
+                             help="Path to single audio file (e.g. song.mp3)")
     input_group.add_argument("--input-dir", "-i", 
-                            help="Directory containing audio files to process")
-    
-    # Required options
+                             help="Directory containing audio files to process")
     parser.add_argument("--output", "-o", required=True,
                        help="Output directory for results")
     parser.add_argument("--token", "-t", 
                        help="HuggingFace token for diarization (if not in .env file)")
-    
-    # Model options
     parser.add_argument("--model", default="large-v3-turbo",
                        help="WhisperX model name (default: large-v3-turbo)")
     parser.add_argument("--language", "-l", default="it",
@@ -434,30 +432,8 @@ def main():
                        choices=["cuda", "cpu", "auto"],
                        default="auto",
                        help="Processing device (default: auto)")
-    parser.add_argument("--compute-type", 
-                       choices=["float16", "int8", "auto"],
-                       default="auto",
-                       help="Compute type (default: auto)")
-    
-    # Processing options
-    parser.add_argument("--batch-size", "-b", type=int, default=16,
-                       help="Batch size for processing (default: 16)")
     parser.add_argument("--speakers", "-s", type=int,
                        help="Number of speakers (if known)")
-    
-    # Segmentation options
-    parser.add_argument("--no-segments", action="store_true",
-                       help="Don't create individual audio segments")
-    parser.add_argument("--merge-threshold", type=float, default=1.5,
-                       help="Duration threshold for merging segments (default: 1.5s)")
-    parser.add_argument("--split-threshold", type=float, default=20.0,
-                       help="Duration threshold for splitting segments (default: 20s)")
-    
-    # File filtering
-    parser.add_argument("--extensions", nargs="+", 
-                       default=[".wav", ".mp3", ".m4a", ".flac"],
-                       help="Audio file extensions to process (default: .wav .mp3 .m4a .flac)")
-    
     args = parser.parse_args()
     
     # Get HuggingFace token from env or args
@@ -466,35 +442,14 @@ def main():
         print("Error: HuggingFace token required. Provide via --token argument or set HF_TOKEN in .env file")
         sys.exit(1)
     
-    # Configure device and compute type
-    if args.device == "auto":
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    else:
-        device = args.device
-        
-    if args.compute_type == "auto":
-        compute_type = "float16" if torch.cuda.is_available() else "int8"
-    else:
-        compute_type = args.compute_type
-    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     # Create configuration
     config = WhisperXConfig(
         model_name=args.model,
         language=args.language,
-        batch_size=args.batch_size,
         device=device,
-        compute_type=compute_type,
-        merge_duration_threshold=args.merge_threshold,
-        split_duration_threshold=args.split_threshold
-    )
-    
-    # Print GPU info
-    if torch.cuda.is_available():
-        capability = torch.cuda.get_device_capability()
-        print(f"CUDA Device Capability: {capability}")
-        print(f"Using device: {device}, compute type: {compute_type}")
-    else:
-        print("No GPU detected, running on CPU.")
+        compute_type="float16" if device == "cuda" else "int8",
+        )
     
     # Collect audio files to process
     audio_files = []
@@ -511,12 +466,14 @@ def main():
             print(f"Error: Input directory not found: {args.input_dir}")
             sys.exit(1)
             
-        for ext in args.extensions:
+        # Audio extensions to search for
+        extensions = [".wav", ".mp3", ".m4a", ".flac", ".mp4", ".avi"]
+        for ext in extensions:
             audio_files.extend(input_path.glob(f"*{ext}"))
             audio_files.extend(input_path.glob(f"*{ext.upper()}"))
         
         if not audio_files:
-            print(f"No audio files found in {args.input_dir} with extensions {args.extensions}")
+            print(f"No audio files found in {args.input_dir} with extensions {extensions}")
             sys.exit(1)
     
     print(f"Found {len(audio_files)} audio file(s) to process")
@@ -529,40 +486,40 @@ def main():
     processor = WhisperXProcessor(config, hf_token)
     processor.load_model()
     
-    create_segments = not args.no_segments
-    if create_segments:
-        segmenter = AudioSegmenter(config)
+
+    segmenter = AudioSegmenter(config)
     
     # Process each file
     for i, audio_file in enumerate(audio_files, 1):
         print(f"\n[{i}/{len(audio_files)}] Processing: {Path(audio_file).name}")
         
-        try:
-            # Process transcription
-            transcript_df = processor.process_file(str(audio_file), args.speakers)
-            
-            # Save transcript
-            audio_name = Path(audio_file).stem
-            transcript_path = output_path / f"{audio_name}_transcript.csv"
-            transcript_df.to_csv(transcript_path, index=False)
-            print(f" Transcript saved: {transcript_path}")
-            
-            if create_segments:
-                # Create audio segments
-                segments_dir = output_path / f"{audio_name}_segments"
-                segments_report_df = segmenter.segment_audio(str(audio_file), transcript_df, str(segments_dir))
+        with tqdm(total=3, desc="Progress", leave=False) as pbar:
+            try:
+                # Step 1: Process transcription (includes transcribe, align, diarize, segment processing)
+                pbar.set_description("Transcribing & processing segments")
+                transcript_df = processor.process_file(str(audio_file), args.speakers)
+                audio_name = Path(audio_file).stem
+                pbar.update(1)
                 
-                # Save segments report
-                segments_report_path = output_path / f"{audio_name}_segments_report.csv"
+                # Step 2: Create audio segments
+                pbar.set_description("Creating audio clips")
+                segments_dir = output_path / f"segmented_{audio_name}"
+                segments_report_df = segmenter.segment_audio(str(audio_file), transcript_df, str(segments_dir))
+                pbar.update(1)
+                
+                # Step 3: Save results
+                pbar.set_description("Saving results")
+                segments_report_path = output_path / f"segmented_{audio_name}.csv"
                 segments_report_df.to_csv(segments_report_path, index=False)
+                pbar.update(1)
                 
                 successful_segments = segments_report_df['success'].sum()
-                print(f" Audio segments created: {successful_segments}/{len(segments_report_df)}")
-                print(f" Segments report saved: {segments_report_path}")
-            
-        except Exception as e:
-            print(f"✗ Error processing {audio_file}: {str(e)}")
-            continue
+                print(f"Audio segments created: {successful_segments}/{len(segments_report_df)}")
+                print(f"Results saved: {segments_report_path}")
+                
+            except Exception as e:
+                print(f"Error processing {audio_file}: {str(e)}")
+                continue
     
     print("\n Processing completed!")
 
