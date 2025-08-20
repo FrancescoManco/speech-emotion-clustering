@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Any
 from dataclasses import dataclass
-
 import torch
 import whisperx
 import pandas as pd
@@ -100,8 +99,9 @@ class WhisperXProcessor:
         """Perform speaker diarization."""
         print(f'Diarizing audio {audio_name}...')
         
+        
         if self.diarize_model is None:
-            self.diarize_model = whisperx.DiarizationPipeline(
+            self.diarize_model = whisperx.diarize.DiarizationPipeline(
                 use_auth_token=self.hf_token, 
                 device=self.config.device
             )

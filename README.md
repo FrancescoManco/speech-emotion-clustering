@@ -23,3 +23,11 @@ Utility per calcolare la velocità di articolazione usando algoritmi Praat. Cont
 - La pipeline è pronta per l'integrazione del modulo di clustering (TODO nel main.py)
 - È predisposta per l'aggiunta dell'analisi LLM per interpretazione semantica (TODO nel main.py)
 - Tutti i moduli hanno funzioni core separate dai wrapper CLI per facilità di integrazione
+
+## Note per Google Colab / GPU Environment
+
+**Fix per libreria cuDNN mancante:**
+```bash
+!sudo apt-get install libcudnn8 libcudnn8-dev
+```
+Questo comando risolve l'errore "Could not load library libcudnn_ops_infer.so.8" che può apparire durante l'esecuzione del modulo di segmentazione su Google Colab. Da descrivere meglio nella documentazione finale.
