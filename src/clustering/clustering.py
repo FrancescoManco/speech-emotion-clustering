@@ -73,7 +73,7 @@ def extract_embeddings(model, dataset):
 def load_config(config_path=None):
     """Load configuration from YAML file"""
     if config_path is None:
-        config_path = "configs\clustering_config.yaml"
+        config_path = "/content/speech-emotion-clustering/configs/clustering_config.yaml"
     
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
@@ -133,9 +133,9 @@ def run_algorithm_search(algorithm_name, normalized_embeddings, param_grid):
     for cfg in tqdm(grid, desc=f"{algorithm_name} hypreparameter research"):
         # Setup UMAP
         reducer = umap.UMAP(
-            n_neighbors=cfg['umap__n_neighbors'],
+            n_neighbors=int(cfg['umap__n_neighbors']),  # Converti in int
             min_dist=cfg['umap__min_dist'],
-            n_components=cfg['umap__n_components'],
+            n_components=int(cfg['umap__n_components']),  # Converti in int
             random_state=42
         )
         X_emb = reducer.fit_transform(normalized_embeddings)
@@ -143,21 +143,21 @@ def run_algorithm_search(algorithm_name, normalized_embeddings, param_grid):
         # Setup clustering algorithm
         if algorithm_name == 'kmeans':
             clusterer = KMeans(
-                n_clusters=cfg['kmeans__n_clusters'],
+                n_clusters=int(cfg['kmeans__n_clusters']),  # Converti in int
                 init=cfg['kmeans__init'],
-                random_state=cfg['kmeans__random_state']
+                random_state=int(cfg['kmeans__random_state'])  # Converti in int
             )
         elif algorithm_name == 'spectral':
             clusterer = SpectralClustering(
-                n_clusters=cfg['spectral__n_clusters'],
+                n_clusters=int(cfg['spectral__n_clusters']),  # Converti in int
                 affinity=cfg['spectral__affinity'],
-                n_neighbors=cfg['spectral__n_neighbors'],
+                n_neighbors=int(cfg['spectral__n_neighbors']),  # Converti in int
                 assign_labels=cfg['spectral__assign_labels'],
-                random_state=cfg['spectral__random_state']
+                random_state=int(cfg['spectral__random_state'])  # Converti in int
             )
         elif algorithm_name == 'agglomerative':
             clusterer = AgglomerativeClustering(
-                n_clusters=cfg['agg__n_clusters'],
+                n_clusters=int(cfg['agg__n_clusters']),  # Converti in int
                 linkage=cfg['agg__linkage']
             )
         
@@ -290,9 +290,9 @@ def apply_final_clustering(best_config, normalized_embeddings, df):
     """Apply best clustering configuration and add results to dataframe"""
     # Reconstruct UMAP with best parameters
     reducer = umap.UMAP(
-        n_neighbors=best_config['umap__n_neighbors'],
+        n_neighbors=int(best_config['umap__n_neighbors']),
         min_dist=best_config['umap__min_dist'],
-        n_components=best_config['umap__n_components'],
+        n_components=int(best_config['umap__n_components']),
         random_state=42
     )
     X_best = reducer.fit_transform(normalized_embeddings)
@@ -301,21 +301,21 @@ def apply_final_clustering(best_config, normalized_embeddings, df):
     algorithm = best_config['algorithm']
     if algorithm == 'kmeans':
         clusterer = KMeans(
-            n_clusters=best_config['kmeans__n_clusters'],
+            n_clusters=int(best_config['kmeans__n_clusters']),
             init=best_config['kmeans__init'],
-            random_state=best_config['kmeans__random_state']
+            random_state=int(best_config['kmeans__random_state'])
         )
     elif algorithm == 'spectral':
         clusterer = SpectralClustering(
-            n_clusters=best_config['spectral__n_clusters'],
+            n_clusters=int(best_config['spectral__n_clusters']),
             affinity=best_config['spectral__affinity'],
-            n_neighbors=best_config['spectral__n_neighbors'],
+            n_neighbors=int(best_config['spectral__n_neighbors']),
             assign_labels=best_config['spectral__assign_labels'],
-            random_state=best_config['spectral__random_state']
+            random_state=int(best_config['spectral__random_state'])
         )
     elif algorithm == 'agglomerative':
         clusterer = AgglomerativeClustering(
-            n_clusters=best_config['agg__n_clusters'],
+            n_clusters=int(best_config['agg__n_clusters']),
             linkage=best_config['agg__linkage']
         )
     
