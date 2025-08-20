@@ -20,3 +20,6 @@ wheels/
 .DS_Store
 .ipynb_checkpoints/
 configs/secrets.yaml
+
+# Data and model files
+data/model/

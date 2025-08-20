@@ -1,38 +1,51 @@
-# Clustering Hyperparameter Search Configuration
-# Example configuration for unified clustering analysis (K-means, Agglomerative, Spectral)
+# Clustering Configuration
+# Parameters for hyperparameter search across different clustering algorithms
 
-clustering:
-  # Data configuration
-  data_file: "data/segmented_audio_data.csv"  # CSV file with 'path' column for audio files
-  model_path: "models/final_model_freeze_good"  # Path to fine-tuned Wav2Vec2 model
-  output_dir: "results/clustering"  # Output directory for results and visualizations
-  
-  # Embedding extraction parameters
-  max_length: 32000  # Maximum audio length in samples (2 seconds at 16kHz)
-  batch_size: 16  # Batch size for embedding extraction
-  sampling_rate: 16000  # Audio sampling rate
-  
-  # Clustering parameters
-  k_range: [5, 6, 7, 8, 9, 10]  # Range of cluster numbers to test
-  random_state: 42  # Random seed for reproducibility
-  
-  # Evaluation
-  metric: "silhouette"  # Clustering evaluation metric (currently only silhouette supported)
-  
-  # Output options
-  create_plots: true  # Generate visualization plots
-  save_results: true  # Save detailed results to files
+# Model settings
+model:
+  path: "/path/to/wav2vec2/model"  # TODO: Update with actual model path
+  batch_size: 16
+  max_length: 32000
+  device: "auto"  # "cuda", "cpu", or "auto"
 
-# Notes:
-# - The data_file should be a CSV with columns: 'path' (audio file paths), 'speaker', 'text', etc.
-# - The model_path should point to a fine-tuned Wav2Vec2 model directory
-# - Results will include:
-#   * clustering_hyperparameter_results.csv: All configurations and scores
-#   * best_clustering_config.yaml: Best configuration found
-#   * clustering_summary.txt: Human-readable summary
-#   * Visualization plots (if create_plots: true)
+# Dataset settings
+dataset:
+  audio_column: "segment_file"  # Column name containing audio file paths
 
-# Example usage:
-# python -m src.clustering.hyperparameter_search --config clustering_config.yaml
-# python -m src.clustering.hyperparameter_search --config clustering_config.yaml --k-range 3 4 5 6 7
-# python -m src.clustering.hyperparameter_search --config clustering_config.yaml --data-file my_data.csv --output-dir my_results/
+# UMAP parameters (common across all algorithms)
+umap:
+  n_neighbors: [5, 15, 30]
+  min_dist: [0.0, 0.1]
+  n_components: [2, 5, 10]
+  random_state: 42
+
+# Algorithm-specific parameters
+algorithms:
+  kmeans:
+    n_clusters: [5, 6, 7, 8, 9, 10]
+    init: ["k-means++", "random"]
+    random_state: [42]
+  
+  spectral:
+    
+    n_clusters: [5, 6, 7, 8, 9, 10]
+    affinity: ["rbf", "nearest_neighbors"]
+    n_neighbors: [10, 15]
+    assign_labels: ["kmeans", "discretize"]
+    random_state: [42]
+  
+  agglomerative:
+    
+    n_clusters: [5, 6, 7, 8, 9]
+    linkage: ["ward", "complete", "average"]
+
+# Evaluation settings
+evaluation:
+  metric: "silhouette"
+  dual_phase: true  # Use dual-phase evaluation (mean + best absolute)
+
+# Output settings
+output:
+  save_results_summary: true
+  display_top_configs: 5
+  verbose: true
