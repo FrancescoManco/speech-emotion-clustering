@@ -1,0 +1,86 @@
+# LLM Analysis Configuration
+# Configuration for different analysis modes and models
+
+# Model settings
+models:
+  ollama:
+    name: "gemma3:12b-it-q4_K_M"
+    language: "italian"
+    base_url: "http://localhost:11434"
+    timeout: 120
+  
+  multimodal:
+    name: "qwen2.5-omni-7b"
+    language: "english"
+    device: "auto"
+    torch_dtype: "auto"
+
+# Analysis parameters
+analysis:
+  top_segments_per_cluster: 10
+  weight_distance: 0.6      # Weight for distance from centroid
+  weight_duration: 0.4      # Weight for segment duration preference
+  min_duration: 0.5         # Minimum segment duration (seconds)
+  max_segments_total: 100   # Maximum total segments to analyze
+
+# Prompts for different analysis modes
+prompts:
+  system_base: |
+    Sei un esperto in analisi emotiva che classifica cluster di frammenti audio-linguistici.
+
+    CONTESTO: I frammenti che analizzerai sono stati raggruppati automaticamente in un cluster perché condividono caratteristiche emotive simili. Identifica il tono emotivo condiviso che ha portato al raggruppamento.
+
+    FORMATO OUTPUT OBBLIGATORIO - Rispondi SOLO con questa struttura, SENZA introduzioni o frasi aggiuntive:
+
+    1. *Emozione principale*: Una frase (max 10 parole) con l'emozione predominante e intensità.
+    2. *Parole chiave*: 3 parole che catturano l'essenza emotiva.
+    3. *Etichetta Emotiva*: Un titolo di 1-2 parole che rappresenti l'emozione prevalente (es. gioia, paura, rabbia).
+    4. Spiegazione: Una breve motivazione(max 50 parole) che descriva in modo semplice il tono e l'impressione generale trasmessa dai frammenti, spiegando come i frammenti e le loro caratteristiche linguistiche presenti nelle frasi supportano l'identificazione dell'emozione.
+    5. *Argomento principale*: Una frase (max 10 parole) che riassuma il tema centrale del cluster.
+    NON aggiungere frasi introduttive come "Ecco l'analisi" o spiegazioni aggiuntive. Inizia DIRETTAMENTE con "1. *Emozione principale*:"
+
+    Analizza il cluster come un'entità emotiva unica, non i singoli frammenti separatamente.
+
+  text_only: |
+    FRAMMENTI RAPPRESENTATIVI DEL CLUSTER:
+    {text}
+
+    Questi frammenti sono stati raggruppati automaticamente perché condividono un profilo emotivo simile.
+    Identifica il tono emotivo condiviso che ha portato al raggruppamento.
+    Focus: Cerca l'emozione più SPECIFICA e DISTINTIVA possibile per questo cluster.
+    IMPORTANTE: Rispondi DIRETTAMENTE con l'elenco numerato, senza introduzioni.
+
+  text_audio: |
+    FRAMMENTI RAPPRESENTATIVI DEL CLUSTER:
+    {text}
+
+    DESCRIZIONE FEATURE ACUSTICHE: {audio_features}
+
+    Questi frammenti sono stati raggruppati automaticamente perché condividono un profilo emotivo simile.
+    Identifica il tono emotivo condiviso che ha portato al raggruppamento, considerando sia il contenuto linguistico che le caratteristiche vocali descritte.
+    
+    Le caratteristiche acustiche forniscono informazioni aggiuntive sul tono emotivo e l'intensità dell'espressione.
+    Focus: Cerca l'emozione più SPECIFICA e DISTINTIVA possibile per questo cluster.
+    IMPORTANTE: Rispondi DIRETTAMENTE con l'elenco numerato, senza introduzioni.
+
+  pure_audio: |
+    CLUSTER AUDIO SEGMENTS:
+    {audio_segments}
+
+    These audio segments have been automatically grouped together because they share similar emotional characteristics.
+    Analyze the emotional tone directly from the audio content, considering vocal tone, prosody, and acoustic characteristics.
+    
+    Focus: Identify the most SPECIFIC and DISTINCTIVE emotion possible for this cluster.
+    IMPORTANT: Respond DIRECTLY with the numbered list, without introductions.
+
+# Output settings
+output:
+  include_evaluation: true
+  evaluation_metrics: ["bleu", "rouge", "bertscore"]
+  save_detailed_results: true
+  
+# Evaluation settings
+evaluation:
+  reference_field: "text"  # Field to use as reference for evaluation
+  bleu_weights: [0.25, 0.25, 0.25, 0.25]
+  rouge_types: ["rouge1", "rouge2", "rougeL"]
