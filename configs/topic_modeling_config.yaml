@@ -13,7 +13,7 @@ models:
 # Data preprocessing
 preprocessing:
   filter_unknown_speakers: true
-  min_duration: 0.0  # Minimum segment duration in seconds
+  min_duration: 1.5  # Minimum segment duration in seconds
   clean_text: true   # Remove null characters and strip whitespace
 
 # Optimization settings
