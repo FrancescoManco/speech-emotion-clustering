@@ -1,132 +1,34 @@
-# Topic Modeling Configuration
-# Configuration for BERTopic analysis workflow
+language: italian
 
-# Model settings
-models:
-  embedding_model: "paraphrase-multilingual-MiniLM-L12-v2"
-  ollama:
-    name: "gemma3:12b-it-q4_K_M"
-    base_url: "http://localhost:11434/v1"
-    api_key: "ollama"
-    timeout: 120
-
-# Data preprocessing
 preprocessing:
   filter_unknown_speakers: true
-  min_duration: 1.5  # Minimum segment duration in seconds
-  clean_text: true   # Remove null characters and strip whitespace
+  min_duration: 1.5
+  clean_text: true
 
-# Optimization settings
-optimization:
+embedding:
+  model: "paraphrase-multilingual-MiniLM-L12-v2"
+
+umap:
   k_min: 15
   k_max: 100
-  enable_optimization: true  # Set to false to use manual parameters
-
-# UMAP settings (used if optimization disabled)
-umap:
-  n_neighbors: 15
-  min_dist: 0.1
   n_components: 5
-  random_state: 42
-  metric: "cosine"
 
-# Clustering settings
 clustering:
-  algorithm: "kmeans"  # kmeans or hdbscan
-  random_state: 42
+  algorithm: kmeans  # or hdbscan
 
-# Vectorization settings
-vectorization:
+vectorizer:
+  language: italian
   min_df: 2
   ngram_range: [1, 2]
-  language: "italian"
-  analyzer: "word"
 
-# LLM representation prompts
-representation_prompts:
-  base: |
-    Ho un argomento che contiene i seguenti documenti:
-    [DOCUMENTS]
-    L'argomento è descritto dalle seguenti parole chiave: [KEYWORDS]
-
-    In base alle informazioni sopra, estrai un'etichetta tematica breve ma molto descrittiva, di massimo 2 parole. Assicurati che sia nel seguente formato:
-    topic: <topic label>
-
-  deep_seek: |
-    Analizza il contesto dialogico e l'intenzione comunicativa dei frammenti conversazionali. 
-    Considera la struttura "call and response" e gli indicatori di:
-    1. Dinamica relazionale (es. negazioni, auto-svalutazioni) 
-    2. Riferimenti a processi in corso 
-    3. Ruoli impliciti (commerciale/tecnico/decisionale)
-
-    La conversazione è presente in questo formato:
-    [DOCUMENTS]
-
-    Le parole chiave estratte sono queste: [KEYWORDS]
-
-    Genera un'etichetta tematica che:
-    a) Sintetizzi la NATURA dell'interazione 
-    b) Evidenzi il LIVELLO ORGANIZZATIVO coinvolto (es. operativo, strategico)
-
-    Devi usare al massimo 2 parole nel seguente formato: 
-    topic: <topic label>
-
-  chat: |
-    Sei un esperto nell'analisi di conversazioni commerciali e IT, specializzato nell'estrazione di argomenti tematici da dialoghi tra BDR e clienti. 
-    Analizza le seguenti frasi e utilizza le parole chiave associate per identificare l'argomento principale di quel frammento di conversazione.
-
-    FRASI: [DOCUMENTS]
-
-    PAROLE CHIAVE: [KEYWORDS]
-
-    Considera il contesto (vendite, customer service, consulenza IT) e genera un'etichetta tematica molto specifica e descrittiva, di massimo 2 parole. 
-    Ignora parole comuni e ridondanti, concentrandoti esclusivamente sul contenuto semantico rilevante.
-
-    Rispondi nel formato:
-    topic: <etichetta>
-
-  claude: |
-    Sei un esperto nell'analisi di conversazioni e nell'estrazione di argomenti tematici. Analizza attentamente le seguenti frasi di conversazione tra un commerciale e un cliente:
-
-    FRASI: [DOCUMENTS]
-
-    PAROLE CHIAVE ASSOCIATE: [KEYWORDS]
-
-    Basandoti sulle frasi e sulle parole chiave fornite, identifica l'argomento principale all'interno di quel frammento di conversazione.
-
-    Estrai un'etichetta tematica molto specifica e descrittiva, di massimo 2 parole, che catturi l'essenza del tema principale. Ignora le parole comuni o di supporto e concentrati sul contenuto semantico.
-
-    Risposta nel formato: topic: <topic label>
-
-  summarization: |
-    Ho dei topic descritti dalle seguenti parole chiave: [KEYWORDS]
-    In questo argomento, i seguenti documenti sono un sottoinsieme piccolo ma rappresentativo di tutti i documenti nell'argomento:
-    [DOCUMENTS]
-
-    Sulla base delle informazioni di cui sopra, si prega di fornire una descrizione di questo argomento nel seguente formato:
-    topic: <topic description>
-
-# Default representation model to use
-default_representation: "chat"
-
-# Output settings
-output:
-  save_model: true
-  save_embeddings: true
-  save_visualizations: true
-  save_topics_pickle: false
+llm:
+  base_url: "http://localhost:11434/v1"
+  api_key: "ollama"
+  model: "gemma3:12b-it-q4_K_M"
   
-# Visualization settings
-visualization:
-  enable_2d_plot: true
-  enable_3d_plot: true
-  enable_topics_plot: true
-  enable_documents_plot: true
-  plot_height: 600
-  plot_width: 800
 
-# Topic search settings
 topic_search:
-  enable_search: false
-  search_keywords: []  # List of keywords to search for similar topics
+  enable_search: true
+  search_keywords: ["infanzia", "viaggio"]
   top_n: 5
+
