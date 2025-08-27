@@ -12,6 +12,16 @@ from tqdm import tqdm
 import requests
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
+import re
+
+# Qwen2.5-Omni imports (with fallback for environments without it)
+try:
+    from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
+    from qwen_omni_utils import process_mm_info
+    QWEN_AVAILABLE = True
+except ImportError:
+    logging.warning("Qwen2.5-Omni dependencies not available. Pure audio analysis will be limited.")
+    QWEN_AVAILABLE = False
 
 
 def load_config(config_path: str = "configs/llm_config.yaml") -> Dict[str, Any]:
@@ -265,36 +275,281 @@ def analyze_text_with_audio_features(df: pd.DataFrame, config: Dict[str, Any]) -
     return pd.DataFrame(results)
 
 
-def analyze_pure_audio(df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
+def extract_speaker_from_path(path: str) -> str:
     """
-    Placeholder for pure audio analysis using multimodal model.
-    
-    This would require implementing audio processing with Qwen2.5-Omni or similar.
-    For now, returns a placeholder implementation.
+    Extract speaker identifier (e.g., 'SPEAKER_00') from file path.
+    Assumes format like '.../XXX_SPEAKER_YY_ZZZ-WWW.wav'.
+    """
+    filename = path.split('/')[-1]
+    match = re.search(r'(SPEAKER_\d{2})', filename)
+    if match:
+        return match.group(1)
+    return "SPEAKER_UNKNOWN"
+
+
+def select_representative_segments(cluster_df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
+    """
+    Select representative segments from a cluster based on distance and duration.
+    Uses the same algorithm as in the notebook.
     
     Args:
-        df: Input dataframe with representative segments
+        cluster_df: DataFrame with segments from a single cluster
+        config: Configuration dictionary
+        
+    Returns:
+        DataFrame with top representative segments
+    """
+    pure_audio_config = config.get('pure_audio', {})
+    n_segments = pure_audio_config.get('segments_per_cluster', 5)
+    weight_distance = pure_audio_config.get('weight_distance', 0.6)
+    weight_duration = pure_audio_config.get('weight_duration', 0.4)
+    
+    c_df = cluster_df.copy()
+    
+    # Check for required columns
+    if 'distance_from_centroid' not in c_df.columns:
+        logging.warning("Missing 'distance_from_centroid' column, using random selection")
+        return c_df.sample(min(n_segments, len(c_df)))
+    
+    # Normalize both metrics
+    distance_min = c_df['distance_from_centroid'].min()
+    distance_max = c_df['distance_from_centroid'].max()
+    duration_min = c_df['duration'].min() 
+    duration_max = c_df['duration'].max()
+    
+    if distance_max != distance_min:
+        c_df['norm_distance'] = (c_df['distance_from_centroid'] - distance_min) / (distance_max - distance_min)
+    else:
+        c_df['norm_distance'] = 0.0
+        
+    if duration_max != duration_min:
+        c_df['norm_duration'] = (c_df['duration'] - duration_min) / (duration_max - duration_min)
+    else:
+        c_df['norm_duration'] = 0.0
+
+    # Calculate composite score (higher is better)
+    # Invert distance so lower distance = higher score
+    c_df['score'] = -(weight_distance * c_df['norm_distance'] - weight_duration * c_df['norm_duration'])
+
+    # Select top segments
+    top_segments = c_df.nlargest(n_segments, 'score')
+    
+    logging.debug(f"Selected {len(top_segments)} representative segments from cluster")
+    return top_segments
+
+
+def extract_assistant_response(text: str) -> str:
+    """
+    Extract the assistant's response from the generated text.
+    """
+    parts = text.split("assistant", 1)
+    if len(parts) > 1:
+        return parts[1].strip()
+    return text.strip()
+
+
+@torch.no_grad()
+def analyze_cluster_qwen(cluster_id: int, audio_paths: List[str], model, processor) -> str:
+    """
+    Analyze a cluster using Qwen2.5-Omni multimodal model.
+    
+    Args:
+        cluster_id: ID of the cluster
+        audio_paths: List of audio file paths to analyze
+        model: Qwen2.5-Omni model
+        processor: Qwen2.5-Omni processor
+        
+    Returns:
+        Analysis response from the model
+    """
+    system_prompt = {
+        "role": "system",
+        "content": [
+            {
+                "type": "text",
+                "text": "You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, capable of perceiving auditory and visual inputs, as well as generating text and speech."
+            }
+        ]
+    }
+
+    user_prompt_text = """
+    Listen to these audio clips. Respond ONLY in this exact format:
+
+    "Identify the shared emotional tone that led to the grouping and respond in exactly this format:
+
+    1. Main Emotion: [emotion name] - [low/medium/high]
+    2. Keywords: [word1, word2, word3]
+    3. Emotional Label: [maximum 2 words]
+    4. Explanation: [ maximum 25 words explaining the emotion]
+    5. Main Topic: [maximum 5 words]
+
+    Use only English. No extra comments.
+    IMPORTANT: Start directly with "1. Main Emotion:"
+    IMPORTANT: Do not insert any other requests or comments.
+    """ 
+
+    # Build user content with available audio files (max 3 due to limitations)
+    user_content = []
+    valid_audio_paths = [path for path in audio_paths[:3] if path and Path(path).exists()]
+    
+    if not valid_audio_paths:
+        raise ValueError("No valid audio paths found")
+    
+    for path in valid_audio_paths:
+        user_content.append({"type": "audio", "audio": path})
+    
+    user_content.append({"type": "text", "text": user_prompt_text})
+
+    user_prompt = {
+        "role": "user",
+        "content": user_content
+    }
+
+    conversation = [system_prompt, user_prompt]
+    
+    # Multimodal preprocessing
+    text = processor.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
+    audios, images, videos = process_mm_info(conversation, use_audio_in_video=False)
+    inputs = processor(
+        text=text,
+        audio=audios,
+        images=images,
+        videos=videos,
+        return_tensors="pt",
+        padding=True
+    )
+    inputs = inputs.to(model.device).to(model.dtype)
+
+    # Generate text response
+    text_ids = model.generate(
+        **inputs, 
+        use_audio_in_video=False, 
+        return_audio=False,
+        do_sample=False,
+    ) 
+    output = processor.batch_decode(text_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+
+    return output[0] if output else "No response generated"
+
+
+def analyze_pure_audio(df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
+    """
+    Analyze segments using pure audio with Qwen2.5-Omni multimodal model.
+    
+    Args:
+        df: Input dataframe with representative segments 
         config: Configuration dictionary
         
     Returns:
         DataFrame with analysis results
     """
-    logging.info("Starting pure audio analysis...")
-    logging.warning("Pure audio analysis is not yet implemented - returning placeholder results")
+    logging.info("Starting pure audio analysis with Qwen2.5-Omni...")
+    
+    if not QWEN_AVAILABLE:
+        logging.error("Qwen2.5-Omni dependencies not available")
+        return pd.DataFrame([{
+            'cluster': -1,
+            'num_segments': 0,
+            'analysis_method': 'pure_audio',
+            'llm_response': "Error: Qwen2.5-Omni dependencies not available",
+            'model_used': 'N/A',
+            'audio_paths': []
+        }])
+    
+    try:
+        # Initialize Qwen2.5-Omni model and processor
+        model_config = config['models']['multimodal']
+        model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
+            model_config['name'],
+            torch_dtype=model_config.get('torch_dtype', "auto"),
+            device_map=model_config.get('device_map', "auto")
+        )
+        processor = Qwen2_5OmniProcessor.from_pretrained(model_config['name'])
+        model.disable_talker()
+        
+        logging.info(f"Loaded Qwen2.5-Omni model: {model_config['name']}")
+        
+    except Exception as e:
+        logging.error(f"Failed to load Qwen2.5-Omni model: {e}")
+        return pd.DataFrame([{
+            'cluster': -1,
+            'num_segments': 0,
+            'analysis_method': 'pure_audio',
+            'llm_response': f"Error loading model: {str(e)}",
+            'model_used': model_config['name'],
+            'audio_paths': []
+        }])
     
     results = []
     
-    for idx, row in tqdm(df.iterrows(), total=len(df), desc="Analyzing audio segments"):
-        result = {
-            'segment_id': row.get('segment_id', idx),
-            'cluster': row['cluster'],
-            'audio_path': row.get('audio_path', ''),
-            'analysis_method': 'pure_audio',
-            'llm_response': "Pure audio analysis not yet implemented",
-            'model_used': config['models']['multimodal']['name']
-        }
-        results.append(result)
+    # Group by cluster for analysis
+    for cluster_id in df['cluster'].unique():
+        cluster_df = df[df['cluster'] == cluster_id]
+        
+        logging.info(f"Analyzing cluster {cluster_id} with {len(cluster_df)} segments")
+        
+        try:
+            # Select representative segments using the notebook algorithm
+            representative_segments = select_representative_segments(cluster_df, config)
+            
+            # Extract audio paths - check multiple possible column names
+            audio_paths = []
+            for _, row in representative_segments.iterrows():
+                audio_path = None
+                # Try different possible column names for audio paths
+                for col in ['segment_file', 'path', 'audio_path', 'file_path']:
+                    if col in row and row[col] and str(row[col]) != 'nan':
+                        audio_path = row[col]
+                        break
+                
+                if audio_path and Path(audio_path).exists():
+                    audio_paths.append(audio_path)
+            
+            if not audio_paths:
+                logging.warning(f"No valid audio paths found for cluster {cluster_id}")
+                result = {
+                    'cluster': cluster_id,
+                    'num_segments': len(cluster_df),
+                    'analysis_method': 'pure_audio',
+                    'llm_response': "No valid audio paths found",
+                    'model_used': model_config['name'],
+                    'audio_paths': []
+                }
+                results.append(result)
+                continue
+            
+            # Analyze cluster with Qwen2.5-Omni
+            analysis_response = analyze_cluster_qwen(cluster_id, audio_paths, model, processor)
+            
+            # Extract the clean response
+            clean_response = extract_assistant_response(analysis_response)
+            
+            # Create result for this cluster
+            result = {
+                'cluster': cluster_id,
+                'num_segments': len(cluster_df),
+                'representative_segments': len(representative_segments),
+                'audio_files_analyzed': len(audio_paths),
+                'analysis_method': 'pure_audio',
+                'llm_response': clean_response,
+                'model_used': model_config['name'],
+                'audio_paths': audio_paths[:3]  # Store first 3 paths for reference
+            }
+            results.append(result)
+            
+        except Exception as e:
+            logging.error(f"Error analyzing cluster {cluster_id}: {e}")
+            result = {
+                'cluster': cluster_id,
+                'num_segments': len(cluster_df),
+                'analysis_method': 'pure_audio',
+                'llm_response': f"Analysis error: {str(e)}",
+                'model_used': model_config['name'],
+                'audio_paths': []
+            }
+            results.append(result)
     
+    logging.info(f"Completed pure audio analysis for {len(results)} clusters")
     return pd.DataFrame(results)
 
 
@@ -303,18 +558,18 @@ def llm_analysis(
     output_csv: str, 
     analysis_methods: List[str] = None,
     config_path: str = None
-) -> str:
+) -> List[str]:
     """
     Main LLM analysis function for pipeline integration.
     
     Args:
         input_csv: Path to input CSV with clustered segments
-        output_csv: Path to output CSV with LLM analysis results
+        output_csv: Base path for output CSV files (method name will be appended)
         analysis_methods: List of analysis methods to use
         config_path: Path to configuration file
         
     Returns:
-        Path to output CSV file
+        List of paths to created CSV files
     """
     # Load configuration
     if config_path is None:
@@ -332,9 +587,15 @@ def llm_analysis(
     # Extract representative segments
     representative_df = extract_representative_segments(df, config)
     
-    all_results = []
+    created_files = []
     
-    # Run each analysis method
+    # Prepare base output path
+    output_path = Path(output_csv)
+    base_name = output_path.stem
+    output_dir = output_path.parent
+    output_ext = output_path.suffix
+    
+    # Run each analysis method and save separately
     for method in analysis_methods:
         logging.info(f"Running analysis method: {method}")
         
@@ -347,27 +608,24 @@ def llm_analysis(
         else:
             logging.warning(f"Unknown analysis method: {method}")
             continue
-            
-        all_results.append(results)
+        
+        # Create method-specific output file
+        method_output_file = output_dir / f"{base_name}_{method}{output_ext}"
+        
+        # Save results for this method
+        results.to_csv(method_output_file, index=False)
+        logging.info(f"Saved {len(results)} {method} analysis results to {method_output_file}")
+        
+        created_files.append(str(method_output_file))
     
-    # Combine all results
-    if all_results:
-        final_results = pd.concat(all_results, ignore_index=True)
-    else:
-        final_results = pd.DataFrame()
-    
-    # Save results
-    final_results.to_csv(output_csv, index=False)
-    logging.info(f"Saved {len(final_results)} analysis results to {output_csv}")
-    
-    return output_csv
+    return created_files
 
 
 def main():
     """CLI interface for LLM analysis."""
     parser = argparse.ArgumentParser(description="LLM Analysis for Speech Emotion Clustering")
-    parser.add_argument("input_csv", help="Input CSV file with clustered segments")
-    parser.add_argument("output_csv", help="Output CSV file for analysis results")
+    parser.add_argument("--input_csv", help="Input CSV file with clustered segments")
+    parser.add_argument("--output_csv", help="Base output CSV file path (method names will be appended)")
     parser.add_argument(
         "--methods", 
         nargs="+", 
@@ -381,14 +639,16 @@ def main():
     
     try:
         # Run LLM analysis
-        output_path = llm_analysis(
+        output_files = llm_analysis(
             input_csv=args.input_csv,
             output_csv=args.output_csv,
             analysis_methods=args.methods,
             config_path=args.config
         )
         
-        logging.info(f"LLM analysis completed successfully. Results saved to: {output_path}")
+        logging.info(f"LLM analysis completed successfully. Created {len(output_files)} files:")
+        for file_path in output_files:
+            logging.info(f"  - {file_path}")
         
     except Exception as e:
         logging.error(f"LLM analysis failed: {e}")

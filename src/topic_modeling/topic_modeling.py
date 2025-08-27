@@ -417,7 +417,6 @@ def topic_modeling_analysis(
     input_csv: str,
     output_dir: str,
     config_path: str = None,
-    representation_type: str = None,
     return_filtered_csv: bool = False
 ) -> str:
     """
@@ -427,7 +426,7 @@ def topic_modeling_analysis(
         input_csv: Path to input CSV with text segments
         output_dir: Directory to save outputs
         config_path: Path to configuration file
-        representation_type: Type of LLM representation to use
+       
         return_filtered_csv: If True, return path to filtered CSV for clustering
         
     Returns:
@@ -438,21 +437,17 @@ def topic_modeling_analysis(
         config_path = "configs/topic_modeling_config.yaml"
     config = load_config(config_path)
     
-    # Override representation type if provided
-    if representation_type:
-        config.setdefault('llm', {})['prompt_type'] = representation_type
+
     
     # Create output directory
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     
-    # Setup logging to file
-    log_file = output_path / "topic_modeling.log"
+    # Setup logging to console only
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(log_file),
             logging.StreamHandler()
         ]
     )
@@ -508,8 +503,7 @@ def topic_modeling_analysis(
     representation_model = setup_representation_model(
         base_url=llm_config.get('base_url', 'http://localhost:11434/v1'),
         api_key=llm_config.get('api_key', 'ollama'),
-        model_name=llm_config.get('model', 'gemma3:12b-it-q4_K_M'),
-        prompt_type=llm_config.get('prompt_type', 'chat')
+        model_name=llm_config.get('model', 'gemma3:12b-it-q4_K_M')
     )
     
     # Create BERTopic model
@@ -586,15 +580,10 @@ Top 10 Topics:
 def main():
     """CLI interface for topic modeling analysis."""
     parser = argparse.ArgumentParser(description="BERTopic Analysis for Speech Emotion Clustering")
-    parser.add_argument("input_csv", help="Input CSV file with text segments")
-    parser.add_argument("output_dir", help="Output directory for results")
+    parser.add_argument("--input_csv", help="Input CSV file with text segments")
+    parser.add_argument("--output_csv", help="Output CSV file path for filtered results")
     parser.add_argument("--config", help="Configuration file path")
-    parser.add_argument(
-        "--representation", 
-        choices=['base', 'chat', 'summarization'],
-        default='chat',
-        help="Type of LLM representation to use"
-    )
+    
     
     args = parser.parse_args()
     
@@ -606,12 +595,29 @@ def main():
     
     try:
         # Run topic modeling analysis
-        output_path = topic_modeling_analysis(
-            input_csv=args.input_csv,
-            output_dir=args.output_dir,
-            config_path=args.config,
-            representation_type=args.representation
-        )
+        # Use the CSV path directly as the output path
+        from pathlib import Path
+        import tempfile
+        
+        # Create temporary directory for intermediate results
+        with tempfile.TemporaryDirectory() as temp_dir:
+            filtered_csv_path = topic_modeling_analysis(
+                input_csv=args.input_csv,
+                output_dir=temp_dir,
+                config_path=args.config,
+                return_filtered_csv=True
+            )
+            
+            # Copy the filtered CSV to the specified output path
+            import shutil
+            if filtered_csv_path and Path(filtered_csv_path).exists():
+                # Ensure the output directory exists
+                output_csv_path = Path(args.output_csv)
+                output_csv_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(filtered_csv_path, args.output_csv)
+                output_path = args.output_csv
+            else:
+                raise RuntimeError("Failed to generate filtered CSV")
         
         logging.info(f"Topic modeling analysis completed successfully. Results saved to: {output_path}")
         

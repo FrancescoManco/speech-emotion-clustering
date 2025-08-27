@@ -371,7 +371,7 @@ class AudioSegmenter:
                 
                 processed_segments.append({
                     'original_file': audio_path,
-                    'segment_file': str(filepath),
+                    'segment_file': str(filepath.resolve()),
                     'start': row['start'],
                     'end': row['end'],
                     'speaker': row['speaker'],

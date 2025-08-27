@@ -214,76 +214,98 @@ def display_results_summary(df_results, top_n=5):
 
 def find_best_configuration(all_results, config):
     """
-    Dual-phase evaluation:
-    1. Find optimal number of clusters using mean silhouette scores  
-    2. Find best configuration for optimal cluster count
+    Three-phase evaluation:
+    1. For each algorithm, find optimal k using mean silhouette scores
+    2. For each algorithm, select best configuration with optimal k
+    3. Compare algorithms and select the best overall
     """
     df_results = pd.DataFrame(all_results)
     
     # Display comprehensive summary
     display_results_summary(df_results, top_n=config['output']['display_top_configs'])
     
-    # Phase 1: Find best number of clusters across all algorithms (if dual_phase enabled)
-    if config['evaluation']['dual_phase']:
-        print(f"\nDUAL-PHASE EVALUATION:")
-        print("-"*50)
-        
-        # Collect all cluster numbers across algorithms
-        all_cluster_nums = []
-        for col in df_results.columns:
-            if 'n_clusters' in col:
-                all_cluster_nums.extend(df_results[col].unique())
-        
-        if all_cluster_nums:
-            unique_clusters = sorted(set(all_cluster_nums))
-            print("Mean silhouette scores by number of clusters:")
-            
-            cluster_means = {}
-            for n_clusters in unique_clusters:
-                # Find all configurations with this number of clusters
-                mask = False
-                for col in df_results.columns:
-                    if 'n_clusters' in col:
-                        mask |= (df_results[col] == n_clusters)
-                
-                if mask.any():
-                    mean_score = df_results[mask]['silhouette'].mean()
-                    cluster_means[n_clusters] = mean_score
-                    print(f"  {n_clusters} clusters: {mean_score:.4f}")
-            
-            best_n_clusters = max(cluster_means.keys(), key=lambda k: cluster_means[k])
-            print(f"Optimal number of clusters (dual-phase): {best_n_clusters}")
-    
-    # Phase 2: Find best absolute configuration
-    best_config = df_results.sort_values('silhouette', ascending=False).iloc[0]
-    print(f"\nFINAL SELECTION:")
+    print(f"\nALGORITHM-SPECIFIC K OPTIMIZATION:")
     print("-"*50)
-    print(f"Best overall configuration: {best_config['algorithm'].upper()}")
-    print(f"Silhouette score: {best_config['silhouette']:.4f}")
     
-    # Show detailed parameters of best config
-    if best_config['algorithm'] == 'kmeans':
-        print(f"Parameters: n_clusters={best_config['kmeans__n_clusters']}, "
-              f"init={best_config['kmeans__init']}, "
-              f"UMAP(n_neighbors={best_config['umap__n_neighbors']}, "
-              f"min_dist={best_config['umap__min_dist']}, "
-              f"n_components={best_config['umap__n_components']})")
-    elif best_config['algorithm'] == 'spectral':
-        print(f"Parameters: n_clusters={best_config['spectral__n_clusters']}, "
-              f"affinity={best_config['spectral__affinity']}, "
-              f"UMAP(n_neighbors={best_config['umap__n_neighbors']}, "
-              f"min_dist={best_config['umap__min_dist']}, "
-              f"n_components={best_config['umap__n_components']})")
-    elif best_config['algorithm'] == 'agglomerative':
-        print(f"Parameters: n_clusters={best_config['agg__n_clusters']}, "
-              f"linkage={best_config['agg__linkage']}, "
-              f"UMAP(n_neighbors={best_config['umap__n_neighbors']}, "
-              f"min_dist={best_config['umap__min_dist']}, "
-              f"n_components={best_config['umap__n_components']})")
+    # Phase 1 & 2: For each algorithm, find optimal k and best config
+    algorithm_best_configs = {}
     
-    print("="*80)
+    for algorithm in df_results['algorithm'].unique():
+        algo_results = df_results[df_results['algorithm'] == algorithm]
+        
+        # Find the k column for this algorithm
+        k_column = None
+        if algorithm == 'kmeans':
+            k_column = 'kmeans__n_clusters'
+        elif algorithm == 'spectral':
+            k_column = 'spectral__n_clusters'
+        elif algorithm == 'agglomerative':
+            k_column = 'agg__n_clusters'
+        
+        if k_column and k_column in algo_results.columns:
+            # Calculate mean silhouette score for each k
+            k_means = algo_results.groupby(k_column)['silhouette'].mean()
+            optimal_k = k_means.idxmax()
+            optimal_k_score = k_means.max()
+            
+            print(f"{algorithm.upper()}:")
+            print(f"  Mean silhouette scores by k:")
+            for k, score in k_means.sort_index().items():
+                marker = " ← OPTIMAL" if k == optimal_k else ""
+                print(f"    k={k}: {score:.4f}{marker}")
+            
+            # Filter configurations with optimal k and select the best one
+            optimal_configs = algo_results[algo_results[k_column] == optimal_k]
+            best_config_for_algo = optimal_configs.sort_values('silhouette', ascending=False).iloc[0]
+            
+            print(f"  Best configuration with k={optimal_k}: silhouette={best_config_for_algo['silhouette']:.4f}")
+            algorithm_best_configs[algorithm] = best_config_for_algo
+        
+        print()
     
-    return best_config
+    # Phase 3: Compare algorithms and select the best overall
+    if algorithm_best_configs:
+        best_overall = max(algorithm_best_configs.values(), key=lambda x: x['silhouette'])
+        
+        print(f"ALGORITHM COMPARISON:")
+        print("-"*50)
+        for algorithm, config in algorithm_best_configs.items():
+            marker = " ← SELECTED" if config['silhouette'] == best_overall['silhouette'] else ""
+            print(f"{algorithm.upper()}: {config['silhouette']:.4f}{marker}")
+        
+        print(f"\nFINAL SELECTION:")
+        print("-"*50)
+        print(f"Best overall configuration: {best_overall['algorithm'].upper()}")
+        print(f"Silhouette score: {best_overall['silhouette']:.4f}")
+        
+        # Show detailed parameters of best config
+        if best_overall['algorithm'] == 'kmeans':
+            print(f"Parameters: n_clusters={best_overall['kmeans__n_clusters']}, "
+                  f"init={best_overall['kmeans__init']}, "
+                  f"UMAP(n_neighbors={best_overall['umap__n_neighbors']}, "
+                  f"min_dist={best_overall['umap__min_dist']}, "
+                  f"n_components={best_overall['umap__n_components']})")
+        elif best_overall['algorithm'] == 'spectral':
+            print(f"Parameters: n_clusters={best_overall['spectral__n_clusters']}, "
+                  f"affinity={best_overall['spectral__affinity']}, "
+                  f"UMAP(n_neighbors={best_overall['umap__n_neighbors']}, "
+                  f"min_dist={best_overall['umap__min_dist']}, "
+                  f"n_components={best_overall['umap__n_components']})")
+        elif best_overall['algorithm'] == 'agglomerative':
+            print(f"Parameters: n_clusters={best_overall['agg__n_clusters']}, "
+                  f"linkage={best_overall['agg__linkage']}, "
+                  f"UMAP(n_neighbors={best_overall['umap__n_neighbors']}, "
+                  f"min_dist={best_overall['umap__min_dist']}, "
+                  f"n_components={best_overall['umap__n_components']})")
+        
+        print("="*80)
+        return best_overall
+    else:
+        # Fallback to original logic if no algorithm-specific configs found
+        best_config = df_results.sort_values('silhouette', ascending=False).iloc[0]
+        print(f"Fallback: Best overall configuration: {best_config['algorithm'].upper()}")
+        print("="*80)
+        return best_config
 
 
 def apply_final_clustering(best_config, normalized_embeddings, df):

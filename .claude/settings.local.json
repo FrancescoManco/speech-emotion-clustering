@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(D:\\TESI MAGISTRALE\\Speech_BDR_Analysis\\notebooks\\Inference\\LLM/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

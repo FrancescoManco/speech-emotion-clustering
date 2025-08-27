@@ -10,9 +10,9 @@ models:
     timeout: 120
   
   multimodal:
-    name: "qwen2.5-omni-7b"
+    name: "Qwen/Qwen2.5-Omni-7B"
     language: "english"
-    device: "auto"
+    device_map: "auto"
     torch_dtype: "auto"
 
 # Analysis parameters
@@ -22,6 +22,13 @@ analysis:
   weight_duration: 0.4      # Weight for segment duration preference
   min_duration: 0.5         # Minimum segment duration (seconds)
   max_segments_total: 100   # Maximum total segments to analyze
+
+# Pure audio analysis specific parameters
+pure_audio:
+  segments_per_cluster: 5   # Number of representative segments per cluster for audio analysis
+  weight_distance: 0.6      # Weight for distance from centroid in segment selection
+  weight_duration: 0.4      # Weight for duration in segment selection
+  max_audio_files: 3        # Maximum audio files to send to Qwen (due to API limitations)
 
 # Prompts for different analysis modes
 prompts:
