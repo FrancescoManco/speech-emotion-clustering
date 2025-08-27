@@ -445,6 +445,9 @@ def analyze_pure_audio(df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame
     """
     logging.info("Starting pure audio analysis with Qwen2.5-Omni...")
     
+    # Debug: print config
+    logging.info(f"Config loaded: {config.get('models', {}).get('multimodal', {})}")
+    
     if not QWEN_AVAILABLE:
         logging.error("Qwen2.5-Omni dependencies not available")
         return pd.DataFrame([{
@@ -459,18 +462,41 @@ def analyze_pure_audio(df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame
     try:
         # Initialize Qwen2.5-Omni model and processor
         model_config = config['models']['multimodal']
+        model_name = model_config['name']
+        
+        # Get HuggingFace token from .env file or environment
+        import os
+        from pathlib import Path
+        
+        # Try to load from .env file first
+        env_file = Path('.env')
+        if env_file.exists():
+            try:
+                from dotenv import load_dotenv
+                load_dotenv()
+                logging.info("Loaded environment from .env file")
+            except ImportError:
+                logging.warning("python-dotenv not installed, skipping .env file loading")
+        
+        hf_token = os.getenv('HF_TOKEN')
+        
+        logging.info(f"Loading Qwen2.5-Omni processor: {model_name}")
+        processor = Qwen2_5OmniProcessor.from_pretrained(model_name, token=hf_token)
+        
+        logging.info(f"Loading Qwen2.5-Omni model: {model_name}")
         model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
-            model_config['name'],
+            model_name,
             torch_dtype=model_config.get('torch_dtype', "auto"),
-            device_map=model_config.get('device_map', "auto")
+            device_map=model_config.get('device_map', "auto"),
+            token=hf_token
         )
-        processor = Qwen2_5OmniProcessor.from_pretrained(model_config['name'])
         model.disable_talker()
         
-        logging.info(f"Loaded Qwen2.5-Omni model: {model_config['name']}")
+        logging.info(f"Successfully loaded Qwen2.5-Omni model: {model_name}")
         
     except Exception as e:
         logging.error(f"Failed to load Qwen2.5-Omni model: {e}")
+        logging.error(f"Model config: {config['models']['multimodal']}")
         return pd.DataFrame([{
             'cluster': -1,
             'num_segments': 0,
